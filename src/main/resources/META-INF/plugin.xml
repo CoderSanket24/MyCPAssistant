@@ -2,10 +2,16 @@
 <idea-plugin>
     <id>com.github.codersanket24.mycpassistant</id>
     <name>MyCPAssistant</name>
-    <vendor>codersanket24</vendor>
+    <vendor url="https://github.com/CoderSanket24">codersanket24</vendor>
+
     <description><![CDATA[
-        <p><b>MyCPAssistant</b> is a repository that provides a pure template to make it easier to create a new plugin project.</p>
-        <p>The main goal of this template is to speed up the setup phase of plugin development for both new and experienced developers by preconfiguring the project scaffold and CI, linking to the proper documentation pages, and keeping everything organized.</p>
+        <p><b>MyCPAssistant</b> &mdash; A Competitive Programming companion plugin for IntelliJ IDEA.</p>
+        <ul>
+            <li>Listens for problem data from the <b>Competitive Companion</b> browser extension.</li>
+            <li>Auto-generates solution files and test cases in your configured output directory.</li>
+            <li>Fully customisable: output path, file extension, listener port, and code template with placeholders.</li>
+            <li>Manual file creation via <b>Tools &rarr; Create CP File</b> (<code>Ctrl+Alt+N</code>).</li>
+        </ul>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -13,7 +19,45 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.codersanket24.mycpassistant.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
-        <postStartupActivity implementation="com.github.codersanket24.mycpassistant.startup.MyProjectActivity" />
+
+        <!-- Application-level persistent settings -->
+        <applicationService
+            serviceImplementation="com.github.codersanket24.mycpassistant.settings.AppSettingsState"/>
+
+        <!-- Settings page: Settings > Tools > Custom CP Companion -->
+        <applicationConfigurable
+            parentId="tools"
+            id="com.github.codersanket24.mycpassistant.settings.AppSettingsConfigurable"
+            displayName="Custom CP Companion"
+            instance="com.github.codersanket24.mycpassistant.settings.AppSettingsConfigurable"/>
+
+        <!-- Project-level service: owns the HTTP server lifecycle -->
+        <projectService
+            serviceImplementation="com.github.codersanket24.mycpassistant.server.CompanionServerService"/>
+
+        <!-- ProjectActivity: starts the server when a project opens -->
+        <postStartupActivity
+            implementation="com.github.codersanket24.mycpassistant.startup.CompanionServerStartupActivity"/>
+
+        <!-- Notification group for balloon messages -->
+        <notificationGroup
+            id="MyCPAssistant"
+            displayType="BALLOON"
+            isLogByDefault="true"/>
+
     </extensions>
+
+    <actions>
+        <!-- Manual trigger: Tools > Create CP File -->
+        <action
+            id="MyCPAssistant.CreateCPFile"
+            class="com.github.codersanket24.mycpassistant.actions.CreateCPFileAction"
+            text="Create CP File"
+            description="Manually create a Competitive Programming solution file">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default"      first-keystroke="ctrl alt N"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt N"/>
+        </action>
+    </actions>
+
 </idea-plugin>
