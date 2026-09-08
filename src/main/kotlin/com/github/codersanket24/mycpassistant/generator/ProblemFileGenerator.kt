@@ -1,6 +1,7 @@
-﻿package com.github.codersanket24.mycpassistant.generator
+package com.github.codersanket24.mycpassistant.generator
 
 import com.github.codersanket24.mycpassistant.model.ProblemData
+import com.github.codersanket24.mycpassistant.runner.CPRunConfigurationManager
 import com.github.codersanket24.mycpassistant.settings.AppSettingsState
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -8,8 +9,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import java.io.File
@@ -58,6 +60,10 @@ object ProblemFileGenerator {
                 val outVDir = VfsUtil.createDirectoryIfMissing(outDir.absolutePath)
                     ?: error("Could not create output directory: ${outDir.absolutePath}")
 
+                // 1b. Register the directory as a source root so IntelliJ compiles it.
+                //     Without this, the ▶️ run button gets ClassNotFoundException.
+                ensureSourceRoot(project, outVDir)
+
                 // 2. Write solution source file
                 val sourceContent = expandTemplate(settings.codeTemplate, safeName, problem)
                 val sourceFile    = writeFile(outVDir, "$safeName${settings.fileExtension}", sourceContent)
@@ -69,9 +75,16 @@ object ProblemFileGenerator {
                     writeFile(outVDir, "${safeName}_output$n.txt", tc.output)
                 }
 
-                // 4. Open in editor + notify (must be on EDT)
+                // 4. Open in editor + run config + populate CP Tests panel + notify (EDT)
                 ApplicationManager.getApplication().invokeLater {
                     FileEditorManager.getInstance(project).openFile(sourceFile, /* focusEditor = */ true)
+                    CPRunConfigurationManager.createOrUpdate(project, safeName, sourceFile, outDir)
+
+                    // Auto-populate the CP Tests tool window with the new test cases
+                    com.github.codersanket24.mycpassistant.toolWindow.CPTestToolWindowFactory
+                        .showAndGetPanel(project)
+                        ?.loadFromFile(sourceFile, safeName)
+
                     showNotification(
                         project,
                         "✅ Problem parsed: ${problem.name}",
@@ -152,5 +165,29 @@ object ProblemFileGenerator {
             .getNotificationGroup(NOTIFICATION_GROUP)
             .createNotification(title, content, type)
             .notify(project)
+    }
+
+    /**
+     * Registers [dir] as a source root in the first available module so that
+     * IntelliJ's compiler includes it in the build and the ▶️ run config works.
+     *
+     * - Idempotent: does nothing if the folder is already a source root.
+     * - Safe: wrapped in [ModuleRootModificationUtil.updateModel] inside the
+     *   existing [WriteCommandAction], so no extra write lock is needed.
+     */
+    private fun ensureSourceRoot(project: Project, dir: VirtualFile) {
+        val module = ModuleManager.getInstance(project).modules.firstOrNull() ?: return
+        ModuleRootModificationUtil.updateModel(module) { model ->
+            // Find the content entry whose root contains our directory
+            val entry = model.contentEntries.firstOrNull { e ->
+                dir.url.startsWith(e.url)
+            } ?: model.addContentEntry(dir) // create one if needed
+
+            // Only add if not already registered
+            if (entry.sourceFolders.none { it.url == dir.url }) {
+                entry.addSourceFolder(dir.url, /* isTestSource = */ false)
+                log.info("ProblemFileGenerator: registered '${dir.path}' as source root")
+            }
+        }
     }
 }

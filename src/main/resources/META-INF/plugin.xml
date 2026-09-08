@@ -15,6 +15,7 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
@@ -45,6 +46,12 @@
             displayType="BALLOON"
             isLogByDefault="true"/>
 
+        <!-- CP Tests tool window (right sidebar, CPH / KHelper style) -->
+        <toolWindow
+            id="CP Tests"
+            anchor="right"
+            factoryClass="com.github.codersanket24.mycpassistant.toolWindow.CPTestToolWindowFactory"/>
+
     </extensions>
 
     <actions>
@@ -57,6 +64,20 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default"      first-keystroke="ctrl alt N"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt N"/>
+        </action>
+
+        <!-- Run all test cases against the current solution -->
+        <action
+            id="MyCPAssistant.RunCPTests"
+            class="com.github.codersanket24.mycpassistant.actions.RunCPTestsAction"
+            text="Run CP Tests"
+            description="Compile and run all test cases for the current CP solution file">
+            <add-to-group group-id="ToolsMenu"      anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <!-- Ctrl+Alt+T conflicts with IntelliJ's "Surround With" — use Ctrl+Shift+F10 instead.
+                 The ▶ Run Tests button in the CP Tests tool window is the primary trigger. -->
+            <keyboard-shortcut keymap="$default"      first-keystroke="ctrl shift F10"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift F10"/>
         </action>
     </actions>
 
