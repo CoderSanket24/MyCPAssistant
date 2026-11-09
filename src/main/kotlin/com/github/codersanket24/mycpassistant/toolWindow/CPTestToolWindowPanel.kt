@@ -4,6 +4,7 @@ import com.github.codersanket24.mycpassistant.runner.CPTestRunner
 import com.github.codersanket24.mycpassistant.runner.TestResult
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -13,102 +14,111 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.Insets
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
+import javax.swing.ScrollPaneConstants
 import javax.swing.SwingConstants
 import javax.swing.border.CompoundBorder
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 /**
  * CPH / KHelper–style test runner panel for the **"CP Tests"** right tool window.
  *
- * Layout (right sidebar):
- * ```
- * ┌─────────────────────────────────────┐
- * │  CF2259D           [▶ Run All]      │  ← header
- * ├─────────────────────────────────────┤
- * │ ┌─────────────────────────────────┐ │
- * │ │ Test 1          ● [▶]  (42 ms)  │ │  ← card header
- * │ │ Input:                          │ │
- * │ │ ┌─────────────────────────────┐ │ │
- * │ │ │ 4                           │ │ │  ← editable
- * │ │ └─────────────────────────────┘ │ │
- * │ │ Expected:                       │ │
- * │ │ ┌─────────────────────────────┐ │ │
- * │ │ │ YES                         │ │ │  ← editable
- * │ │ └─────────────────────────────┘ │ │
- * │ │ Output:  ✓ PASS  42 ms         │ │
- * │ │ ┌─────────────────────────────┐ │ │
- * │ │ │ YES               (green)   │ │ │  ← read-only, colored
- * │ │ └─────────────────────────────┘ │ │
- * │ └─────────────────────────────────┘ │
- * │  ... more cards ...                 │
- * ├─────────────────────────────────────┤
- * │          [+ Add Test Case]          │  ← footer
- * └─────────────────────────────────────┘
- * ```
+ * Designed with full-width aligned components, dynamic height calculation
+ * so outputs and inputs do not get cramped or vertically stretched, and
+ * clear status pills matching IntelliJ's Darcula / Light themes.
  */
 class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout()) {
 
-    // ── Colors ─────────────────────────────────────────────────────────────
-    private val passColor    = JBColor(Color(0, 150, 0),   Color(100, 220, 100))
-    private val failColor    = JBColor(Color(200, 0, 0),   Color(255, 100, 100))
-    private val errorColor   = JBColor(Color(200, 100, 0), Color(220, 140, 60))
-    private val timeoutColor = JBColor(Color(160, 130, 0), Color(220, 190, 60))
-    private val passBorder   = JBColor(Color(100, 200, 100), Color(60, 140, 60))
-    private val failBorder   = JBColor(Color(220, 100, 100), Color(180, 60, 60))
+    // ── Status Colors ───────────────────────────────────────────────────────
+    private val passColor    = JBColor(Color(38, 166, 91),   Color(80, 200, 120))
+    private val failColor    = JBColor(Color(217, 30, 24),   Color(240, 80, 80))
+    private val errorColor   = JBColor(Color(230, 126, 34),  Color(243, 156, 18))
+    private val timeoutColor = JBColor(Color(180, 130, 0),   Color(241, 196, 15))
+
+    private val passBorder   = JBColor(Color(38, 166, 91),   Color(60, 160, 90))
+    private val failBorder   = JBColor(Color(217, 30, 24),   Color(200, 60, 60))
+    private val errorBorder  = JBColor(Color(230, 126, 34),  Color(210, 110, 30))
 
     // ── State ──────────────────────────────────────────────────────────────
     private var currentFile: VirtualFile? = null
     private val cards = mutableListOf<TestCaseCard>()
 
-    // ── Header ─────────────────────────────────────────────────────────────
-    private val problemLabel = JBLabel("Open a CP solution file").apply {
+    // ── Header Widgets ─────────────────────────────────────────────────────
+    private val problemLabel = JBLabel("No problem open").apply {
         font = font.deriveFont(Font.BOLD, 13f)
         horizontalAlignment = SwingConstants.LEFT
     }
+
+    private val statsBadge = JBLabel("").apply {
+        font = font.deriveFont(Font.BOLD, 11f)
+        border = JBUI.Borders.empty(2, 6)
+        isVisible = false
+    }
+
     private val runAllButton = JButton("▶ Run All").apply {
-        font = font.deriveFont(Font.BOLD)
-        toolTipText = "Compile and run all test cases (reads inputs from the boxes below)"
+        font = font.deriveFont(Font.BOLD, 12f)
+        margin = Insets(4, 10, 4, 10)
+        toolTipText = "Compile and run all test cases"
         addActionListener { onRunAll() }
     }
 
-    // ── Cards container (scrollable) ───────────────────────────────────────
+    // ── Cards Container (Scrollable) ───────────────────────────────────────
     private val cardsBox = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         background = UIUtil.getPanelBackground()
-        border = JBUI.Borders.empty(4, 6, 0, 6)
+        border = JBUI.Borders.empty(6, 8, 8, 8)
     }
 
     // ── Init ───────────────────────────────────────────────────────────────
 
     init {
-        // Header
+        // Top Toolbar
         val header = JPanel(BorderLayout(8, 0)).apply {
-            border = JBUI.Borders.empty(6, 8)
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border()),
+                JBUI.Borders.empty(8, 10)
+            )
             background = UIUtil.getPanelBackground()
-            add(problemLabel, BorderLayout.CENTER)
+
+            val leftBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+                isOpaque = false
+                add(problemLabel)
+                add(statsBadge)
+            }
+            add(leftBox, BorderLayout.CENTER)
             add(runAllButton, BorderLayout.EAST)
         }
         add(header, BorderLayout.NORTH)
 
-        // Scrollable cards area
-        val scroll = JBScrollPane(cardsBox).apply {
+        // Center: Scrollable Cards
+        val scrollPane = JBScrollPane(cardsBox).apply {
             border = BorderFactory.createEmptyBorder()
             verticalScrollBar.unitIncrement = 16
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
         }
-        add(scroll, BorderLayout.CENTER)
+        add(scrollPane, BorderLayout.CENTER)
 
         // Footer: "+ Add Test Case"
-        val footer = JPanel(FlowLayout(FlowLayout.CENTER, 0, 4)).apply {
+        val footer = JPanel(FlowLayout(FlowLayout.CENTER, 0, 6)).apply {
             background = UIUtil.getPanelBackground()
-            border = JBUI.Borders.empty(4)
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, JBColor.border()),
+                JBUI.Borders.empty(4)
+            )
             val addBtn = JButton("＋ Add Test Case").apply {
+                font = font.deriveFont(Font.PLAIN, 12f)
+                margin = Insets(4, 12, 4, 12)
+                toolTipText = "Add a new blank test case"
                 addActionListener { addCard("", "") }
             }
             add(addBtn)
@@ -119,31 +129,33 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
     // ── Public API ─────────────────────────────────────────────────────────
 
     /**
-     * Loads test cases from the filesystem and rebuilds cards.
-     * Call this when a new problem is parsed (from [ProblemFileGenerator]).
+     * Loads test cases from the filesystem and populates cards.
      */
     fun loadFromFile(sourceFile: VirtualFile, problemName: String) {
         currentFile = sourceFile
         problemLabel.text = problemName
+        statsBadge.isVisible = false
 
         val parent = sourceFile.parent ?: return
         val base   = sourceFile.nameWithoutExtension
 
-        clearCards()
+        cards.clear()
 
-        // Discover _inputN.txt / _outputN.txt pairs
         var n = 1
         while (true) {
             val inputFile = parent.findChild("${base}_input$n.txt") ?: break
             val outFile   = parent.findChild("${base}_output$n.txt")
-            val inputText = com.intellij.openapi.vfs.VfsUtil.loadText(inputFile)
-            val expText   = outFile?.let { com.intellij.openapi.vfs.VfsUtil.loadText(it) } ?: ""
-            addCard(inputText, expText)
+            val inputText = VfsUtil.loadText(inputFile)
+            val expText   = outFile?.let { VfsUtil.loadText(it) } ?: ""
+            cards.add(TestCaseCard(n, inputText, expText))
             n++
         }
 
-        if (cards.isEmpty()) addCard("", "") // always show at least one blank card
-        revalidate(); repaint()
+        if (cards.isEmpty()) {
+            cards.add(TestCaseCard(1, "", ""))
+        }
+
+        rebuildCardsBox()
     }
 
     /** Updates cards with run results. Called on EDT after [CPTestRunner.runAll]. */
@@ -152,57 +164,64 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         results.forEach { r ->
             cards.getOrNull(r.index - 1)?.showResult(r)
         }
+
+        // Update overall stats badge
+        val total = results.size
+        val passed = results.count { it.status == TestResult.Status.PASS }
+        statsBadge.text = "$passed / $total Passed"
+        statsBadge.foreground = if (passed == total && total > 0) passColor else failColor
+        statsBadge.isVisible = true
+
+        revalidate()
+        repaint()
     }
 
-    /** Called by [com.github.codersanket24.mycpassistant.actions.RunCPTestsAction] via keyboard shortcut. */
+    /** Called by [com.github.codersanket24.mycpassistant.actions.RunCPTestsAction]. */
     fun onRunAllPublic() = onRunAll()
 
-    // ── Internal helpers ───────────────────────────────────────────────────
-
-    private fun clearCards() {
-        cards.clear()
-        cardsBox.removeAll()
-    }
+    // ── Internal Helpers ───────────────────────────────────────────────────
 
     private fun addCard(input: String, expected: String) {
         val idx  = cards.size + 1
         val card = TestCaseCard(idx, input, expected)
         cards.add(card)
-        cardsBox.add(card)
-        cardsBox.add(Box.createVerticalStrut(8))
-        cardsBox.revalidate()
-        cardsBox.repaint()
+        rebuildCardsBox()
     }
 
     private fun removeCard(card: TestCaseCard) {
-        val pos = cards.indexOf(card)
-        if (pos < 0) return
-        cards.removeAt(pos)
-        // renumber remaining cards
-        cards.forEachIndexed { i, c -> c.updateIndex(i + 1) }
-        // rebuild cardsBox
-        cardsBox.removeAll()
-        cards.forEach { c ->
-            cardsBox.add(c)
-            cardsBox.add(Box.createVerticalStrut(8))
+        if (cards.size <= 1) {
+            // Keep at least one empty card
+            card.reset("", "")
+            return
         }
+        cards.remove(card)
+        rebuildCardsBox()
+    }
+
+    private fun rebuildCardsBox() {
+        cardsBox.removeAll()
+        cards.forEachIndexed { i, card ->
+            card.updateIndex(i + 1)
+            cardsBox.add(card)
+            cardsBox.add(Box.createVerticalStrut(10))
+        }
+        // Vertical glue absorbs extra space at the bottom so cards don't stretch
+        cardsBox.add(Box.createVerticalGlue())
         cardsBox.revalidate()
         cardsBox.repaint()
     }
 
     private fun onRunAll() {
-        // If no file is loaded yet, try the current editor file
         val file = currentFile
             ?: FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
             ?: run {
-                problemLabel.text = "No file open in editor."
+                problemLabel.text = "No file open in editor"
                 return
             }
 
         val base   = file.nameWithoutExtension
         val parent = file.parent
 
-        // If still no cards, try to auto-load from disk
         if (cards.isEmpty() && parent != null) {
             loadFromFile(file, base)
         } else {
@@ -211,15 +230,14 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         }
 
         if (cards.isEmpty()) {
-            problemLabel.text = "No test cases found for '$base'."
+            problemLabel.text = "No tests found for '$base'"
             return
         }
 
-        // Collect (input, expected) from each card's live text areas
         val testCases = cards.map { it.getInput() to it.getExpected() }
 
-        // Disable button and show running state on each card
         runAllButton.isEnabled = false
+        statsBadge.isVisible   = false
         cards.forEach { it.setRunning() }
 
         CPTestRunner.runAll(
@@ -239,120 +257,208 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         expectedText: String,
     ) : JPanel(BorderLayout()) {
 
-        private val titleLabel  = JBLabel("Test $index").apply { font = font.deriveFont(Font.BOLD) }
-        private val statusLabel = JBLabel("●").apply {
+        private val titleLabel  = JBLabel("Test #$index").apply {
+            font = font.deriveFont(Font.BOLD, 12f)
+        }
+        private val statusBadge = JBLabel("● Not run").apply {
+            font = font.deriveFont(Font.PLAIN, 11f)
             foreground = JBColor.GRAY
-            toolTipText = "Not yet run"
         }
         private val timeLabel   = JBLabel("").apply {
             foreground = UIUtil.getContextHelpForeground()
             font       = font.deriveFont(10f)
         }
         private val runOneBtn   = JButton("▶").apply {
-            preferredSize = Dimension(38, 24)
+            preferredSize = Dimension(32, 22)
+            margin        = Insets(0, 0, 0, 0)
             toolTipText   = "Run only this test case"
             addActionListener { onRunSingle() }
         }
         private val deleteBtn   = JButton("✕").apply {
-            preferredSize = Dimension(28, 24)
-            toolTipText   = "Remove this test case"
+            preferredSize = Dimension(24, 22)
+            margin        = Insets(0, 0, 0, 0)
+            toolTipText   = "Delete this test case"
             foreground    = JBColor.GRAY
             addActionListener { removeCard(this@TestCaseCard) }
         }
 
+        // Text Areas
         private val inputArea    = makeTextArea(inputText,    editable = true)
         private val expectedArea = makeTextArea(expectedText, editable = true)
         private val gotArea      = makeTextArea("",           editable = false)
-        private val gotPanel     = buildGotPanel()  // hidden until first run
+
+        private val inputScroll    = makeScrollPane(inputArea,    minLines = 2, maxLines = 8)
+        private val expectedScroll = makeScrollPane(expectedArea, minLines = 2, maxLines = 8)
+        private val gotScroll      = makeScrollPane(gotArea,      minLines = 2, maxLines = 10)
+
+        private val gotHeaderLabel = sectionLabel("Output:")
+        private val gotPanel       = JPanel().apply {
+            layout   = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            isVisible = false
+            alignmentX = Component.LEFT_ALIGNMENT
+
+            add(gotHeaderLabel)
+            add(Box.createVerticalStrut(3))
+            add(gotScroll)
+        }
 
         init {
             background = UIUtil.getPanelBackground()
+            alignmentX = Component.LEFT_ALIGNMENT
             border     = CompoundBorder(
                 BorderFactory.createLineBorder(JBColor.border(), 1, true),
-                JBUI.Borders.empty(6),
+                JBUI.Borders.empty(8, 10)
             )
-            maximumSize = Dimension(Int.MAX_VALUE, Int.MAX_VALUE)
 
-            // Card header row: [Test N] [●] [▶] [✕] ... [time]
+            // Header Row: [Test #N] [Status Badge] ──── [Time] [▶] [✕]
             val cardHeader = JPanel(BorderLayout()).apply {
-                isOpaque = false
-                val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                isOpaque   = false
+                alignmentX = Component.LEFT_ALIGNMENT
+
+                val left = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
                     isOpaque = false
-                    add(titleLabel); add(statusLabel)
+                    add(titleLabel)
+                    add(statusBadge)
                 }
                 val right = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
                     isOpaque = false
-                    add(timeLabel); add(runOneBtn); add(deleteBtn)
+                    add(timeLabel)
+                    add(runOneBtn)
+                    add(deleteBtn)
                 }
                 add(left,  BorderLayout.WEST)
                 add(right, BorderLayout.EAST)
             }
 
-            // Content
-            val content = JPanel().apply {
-                layout  = BoxLayout(this, BoxLayout.Y_AXIS)
+            // Body Column: full-width left-aligned children
+            val body = JPanel().apply {
+                layout   = BoxLayout(this, BoxLayout.Y_AXIS)
                 isOpaque = false
-                add(Box.createVerticalStrut(6))
+                alignmentX = Component.LEFT_ALIGNMENT
+
+                add(cardHeader)
+                add(Box.createVerticalStrut(8))
+
                 add(sectionLabel("Input:"))
-                add(Box.createVerticalStrut(2))
-                add(makeScrollPane(inputArea, rows = 3))
-                add(Box.createVerticalStrut(6))
+                add(Box.createVerticalStrut(3))
+                add(inputScroll)
+                add(Box.createVerticalStrut(8))
+
                 add(sectionLabel("Expected:"))
-                add(Box.createVerticalStrut(2))
-                add(makeScrollPane(expectedArea, rows = 3))
-                add(Box.createVerticalStrut(6))
+                add(Box.createVerticalStrut(3))
+                add(expectedScroll)
+                add(Box.createVerticalStrut(8))
+
                 add(gotPanel)
             }
 
-            add(cardHeader, BorderLayout.NORTH)
-            add(content,    BorderLayout.CENTER)
+            add(body, BorderLayout.CENTER)
+
+            // Listen to text edits to auto-adjust heights
+            bindAutoHeight(inputArea, inputScroll, 2, 8)
+            bindAutoHeight(expectedArea, expectedScroll, 2, 8)
         }
 
-        // ── Accessors ───────────────────────────────────────────────────────
+        override fun getMaximumSize(): Dimension {
+            // Allow card to stretch horizontally, but strictly fit preferred height vertically
+            return Dimension(Int.MAX_VALUE, preferredSize.height)
+        }
+
+        // ── Accessors & Helpers ─────────────────────────────────────────────
         fun getInput()    = inputArea.text
         fun getExpected() = expectedArea.text
-        fun updateIndex(i: Int) { index = i; titleLabel.text = "Test $i" }
 
-        // ── State changes ───────────────────────────────────────────────────
+        fun updateIndex(i: Int) {
+            index = i
+            titleLabel.text = "Test #$i"
+        }
+
+        fun reset(input: String, expected: String) {
+            inputArea.text    = input
+            expectedArea.text = expected
+            gotArea.text      = ""
+            statusBadge.text  = "● Not run"
+            statusBadge.foreground = JBColor.GRAY
+            timeLabel.text    = ""
+            gotPanel.isVisible = false
+            revalidate()
+            repaint()
+        }
+
         fun setRunning() {
-            statusLabel.text      = "⟳"
-            statusLabel.foreground = JBColor.GRAY
-            timeLabel.text        = ""
-            gotPanel.isVisible    = false
+            statusBadge.text       = "⟳ Running..."
+            statusBadge.foreground = JBColor.namedColor("ProgressBar.progressColor", JBColor(Color(0, 120, 215), Color(80, 160, 240)))
+            timeLabel.text         = ""
+            gotPanel.isVisible     = false
+            revalidate()
+            repaint()
         }
 
         fun showResult(r: TestResult) {
-            val (emoji, color) = when (r.status) {
-                TestResult.Status.PASS    -> "✓" to passColor
-                TestResult.Status.FAIL    -> "✗" to failColor
-                TestResult.Status.ERROR   -> "!" to errorColor
-                TestResult.Status.TIMEOUT -> "⌛" to timeoutColor
+            when (r.status) {
+                TestResult.Status.PASS -> {
+                    statusBadge.text       = "✓ Passed"
+                    statusBadge.foreground = passColor
+                    gotHeaderLabel.text    = "Output: ✓ Matches expected"
+                    gotHeaderLabel.foreground = passColor
+                    gotScroll.border       = BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(passBorder, 2, true),
+                        JBUI.Borders.empty(2)
+                    )
+                }
+                TestResult.Status.FAIL -> {
+                    statusBadge.text       = "✗ Failed"
+                    statusBadge.foreground = failColor
+                    gotHeaderLabel.text    = "Output: ✗ Did not match"
+                    gotHeaderLabel.foreground = failColor
+                    gotScroll.border       = BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(failBorder, 2, true),
+                        JBUI.Borders.empty(2)
+                    )
+                }
+                TestResult.Status.ERROR -> {
+                    statusBadge.text       = "! Error"
+                    statusBadge.foreground = errorColor
+                    gotHeaderLabel.text    = "Error output:"
+                    gotHeaderLabel.foreground = errorColor
+                    gotScroll.border       = BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(errorBorder, 2, true),
+                        JBUI.Borders.empty(2)
+                    )
+                }
+                TestResult.Status.TIMEOUT -> {
+                    statusBadge.text       = "⌛ Timeout"
+                    statusBadge.foreground = timeoutColor
+                    gotHeaderLabel.text    = "Output before timeout:"
+                    gotHeaderLabel.foreground = timeoutColor
+                    gotScroll.border       = BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(errorBorder, 2, true),
+                        JBUI.Borders.empty(2)
+                    )
+                }
             }
-            statusLabel.text      = emoji
-            statusLabel.foreground = color
-            timeLabel.text        = "${r.timeMs} ms"
 
-            gotArea.text = if (r.status == TestResult.Status.ERROR || r.status == TestResult.Status.TIMEOUT)
+            timeLabel.text = "${r.timeMs} ms"
+            gotArea.text   = if (r.status == TestResult.Status.ERROR || r.status == TestResult.Status.TIMEOUT) {
                 (r.errorMsg.takeIf { it.isNotBlank() } ?: r.got).trim()
-            else r.got.trim()
+            } else {
+                r.got.trim()
+            }
 
-            // Colour the output border
-            gotPanel.border = CompoundBorder(
-                BorderFactory.createLineBorder(
-                    if (r.status == TestResult.Status.PASS) passBorder else failBorder, 2, true
-                ),
-                JBUI.Borders.empty(4),
-            )
+            updateScrollPaneHeight(gotArea, gotScroll, minLines = 2, maxLines = 10)
             gotPanel.isVisible = true
 
-            revalidate(); repaint()
+            // Trigger parent layout refresh so card expands cleanly to fit output
+            this@CPTestToolWindowPanel.revalidate()
+            this@CPTestToolWindowPanel.repaint()
         }
 
-        // ── Run single ──────────────────────────────────────────────────────
         private fun onRunSingle() {
             val file = currentFile
                 ?: FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
                 ?: return
+
             currentFile = file
             problemLabel.text = file.nameWithoutExtension
 
@@ -365,51 +471,63 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
                 testCases  = listOf(getInput() to getExpected()),
                 onComplete = { results ->
                     results.firstOrNull()?.let { r ->
-                        // remap index to this card's index
                         showResult(r.copy(index = index))
                     }
                     runOneBtn.isEnabled = true
                 },
             )
         }
-
-        // ── UI helpers ──────────────────────────────────────────────────────
-        private fun buildGotPanel() = JPanel(BorderLayout()).apply {
-            isOpaque  = false
-            isVisible = false
-            val label = sectionLabel("Output:")
-            border    = BorderFactory.createEmptyBorder()
-            val inner = JPanel(BorderLayout()).apply {
-                isOpaque = false
-                add(label,                       BorderLayout.NORTH)
-                add(Box.createVerticalStrut(2),   BorderLayout.NORTH) // gap
-                add(makeScrollPane(gotArea, rows = 3), BorderLayout.CENTER)
-            }
-            add(inner, BorderLayout.CENTER)
-        }
     }
 
-    // ── Shared UI factories ────────────────────────────────────────────────
+    // ── Shared UI Factories ────────────────────────────────────────────────
 
     private fun sectionLabel(text: String) = JBLabel(text).apply {
         font       = font.deriveFont(Font.BOLD, 11f)
         foreground = UIUtil.getContextHelpForeground()
-        alignmentX = LEFT_ALIGNMENT
+        alignmentX = Component.LEFT_ALIGNMENT
     }
 
     private fun makeTextArea(text: String, editable: Boolean) = JBTextArea(text).apply {
-        isEditable = editable
-        font       = Font(Font.MONOSPACED, Font.PLAIN, 12)
-        lineWrap   = true
+        isEditable    = editable
+        font          = Font(Font.MONOSPACED, Font.PLAIN, 12)
+        lineWrap      = false // Preserves indentation and columns for matrices & arrays
         wrapStyleWord = false
+        margin        = Insets(4, 6, 4, 6)
     }
 
-    private fun makeScrollPane(area: JBTextArea, rows: Int) =
-        JBScrollPane(area).apply {
-            val lineH = area.getFontMetrics(area.font).height
-            preferredSize = Dimension(Int.MAX_VALUE, lineH * rows + 8)
-            maximumSize   = Dimension(Int.MAX_VALUE, lineH * rows + 8)
-            minimumSize   = Dimension(100, lineH * 2)
-            alignmentX    = LEFT_ALIGNMENT
+    private fun makeScrollPane(area: JBTextArea, minLines: Int, maxLines: Int): JBScrollPane {
+        val scroll = JBScrollPane(area).apply {
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(JBColor.border(), 1, true),
+                JBUI.Borders.empty(2)
+            )
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED
+            verticalScrollBarPolicy   = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            alignmentX                = Component.LEFT_ALIGNMENT
         }
+        updateScrollPaneHeight(area, scroll, minLines, maxLines)
+        return scroll
+    }
+
+    private fun updateScrollPaneHeight(area: JBTextArea, scroll: JBScrollPane, minLines: Int, maxLines: Int) {
+        val lineCount = maxOf(minLines, minOf(maxLines, area.text.lines().size))
+        val lineH     = maxOf(16, area.getFontMetrics(area.font).height)
+        val h         = lineH * lineCount + 14
+        scroll.preferredSize = Dimension(100, h)
+        scroll.maximumSize   = Dimension(Int.MAX_VALUE, h)
+        scroll.minimumSize   = Dimension(50, lineH * minLines + 14)
+    }
+
+    private fun bindAutoHeight(area: JBTextArea, scroll: JBScrollPane, minLines: Int, maxLines: Int) {
+        area.document.addDocumentListener(object : DocumentListener {
+            private fun update() {
+                updateScrollPaneHeight(area, scroll, minLines, maxLines)
+                this@CPTestToolWindowPanel.revalidate()
+                this@CPTestToolWindowPanel.repaint()
+            }
+            override fun insertUpdate(e: DocumentEvent?) = update()
+            override fun removeUpdate(e: DocumentEvent?) = update()
+            override fun changedUpdate(e: DocumentEvent?) = update()
+        })
+    }
 }

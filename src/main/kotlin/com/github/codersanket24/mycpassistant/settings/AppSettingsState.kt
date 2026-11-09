@@ -1,4 +1,4 @@
-﻿package com.github.codersanket24.mycpassistant.settings
+package com.github.codersanket24.mycpassistant.settings
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
@@ -24,7 +24,7 @@ class AppSettingsState : PersistentStateComponent<AppSettingsState> {
     // ── Configurable fields ────────────────────────────────────────────────
 
     /** Relative path inside the project where solution files are created. */
-    var outputDirectory: String = "src/main/java/solutions"
+    var outputDirectory: String = "src"
 
     /** TCP port that the embedded HTTP server listens on. */
     var listenerPort: Int = 27121
