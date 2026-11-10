@@ -1,39 +1,65 @@
 package com.github.codersanket24.mycpassistant
 
-import com.intellij.ide.highlighter.XmlFileType
-import com.intellij.openapi.components.service
-import com.intellij.psi.xml.XmlFile
-import com.intellij.testFramework.TestDataPath
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.util.PsiErrorElementUtil
-import com.github.codersanket24.mycpassistant.services.MyProjectService
+import com.github.codersanket24.mycpassistant.generator.ProblemFileGenerator
+import com.github.codersanket24.mycpassistant.model.ProblemData
+import com.github.codersanket24.mycpassistant.runner.TestResult
+import com.google.gson.Gson
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Test
 
-@TestDataPath("\$CONTENT_ROOT/src/test/testData")
-class MyPluginTest : BasePlatformTestCase() {
+class MyPluginTest {
 
-    fun testXMLFile() {
-        val psiFile = myFixture.configureByText(XmlFileType.INSTANCE, "<foo>bar</foo>")
-        val xmlFile = assertInstanceOf(psiFile, XmlFile::class.java)
-
-        assertFalse(PsiErrorElementUtil.hasErrors(project, xmlFile.virtualFile))
-
-        assertNotNull(xmlFile.rootTag)
-
-        xmlFile.rootTag?.let {
-            assertEquals("foo", it.name)
-            assertEquals("bar", it.value.text)
-        }
+    @Test
+    fun testSanitizeName() {
+        assertEquals("Watermelon", ProblemFileGenerator.sanitizeName("A. Watermelon"))
+        assertEquals("LuckyNumber", ProblemFileGenerator.sanitizeName("1234A - Lucky Number"))
+        assertEquals("TwoSum", ProblemFileGenerator.sanitizeName("Two Sum"))
+        assertEquals("ProblemName", ProblemFileGenerator.sanitizeName("Problem B: Problem Name"))
+        assertEquals("_99Bottles", ProblemFileGenerator.sanitizeName("99 Bottles"))
+        assertEquals("A", ProblemFileGenerator.sanitizeName("A"))
+        assertEquals("Solution", ProblemFileGenerator.sanitizeName(""))
     }
 
-    fun testRename() {
-        myFixture.testRename("foo.xml", "foo_after.xml", "a2")
+    @Test
+    fun testProblemDataDeserialization() {
+        val json = """
+            {
+              "name": "A. Watermelon",
+              "group": "Codeforces Round 4",
+              "url": "https://codeforces.com/problemset/problem/4/A",
+              "timeLimit": 2000,
+              "memoryLimit": 64,
+              "tests": [
+                { "input": "4\n", "output": "YES\n" },
+                { "input": "3\n", "output": "NO\n" }
+              ]
+            }
+        """.trimIndent()
+
+        val problem = Gson().fromJson(json, ProblemData::class.java)
+        assertNotNull(problem)
+        assertEquals("A. Watermelon", problem.name)
+        assertEquals("Codeforces Round 4", problem.group)
+        assertEquals(2000L, problem.timeLimit)
+        assertEquals(64, problem.memoryLimit)
+        assertEquals(2, problem.tests.size)
+        assertEquals("4\n", problem.tests[0].input)
+        assertEquals("YES\n", problem.tests[0].output)
     }
 
-    fun testProjectService() {
-        val projectService = project.service<MyProjectService>()
-
-        assertNotSame(projectService.getRandomNumber(), projectService.getRandomNumber())
+    @Test
+    fun testTestResultStatus() {
+        val result = TestResult(
+            index = 1,
+            input = "4",
+            expected = "YES",
+            got = "YES",
+            status = TestResult.Status.PASS,
+            timeMs = 42L
+        )
+        assertEquals(TestResult.Status.PASS, result.status)
+        assertEquals("PASS", result.status.label)
+        assertEquals(42L, result.timeMs)
     }
-
-    override fun getTestDataPath() = "src/test/testData/rename"
 }

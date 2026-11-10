@@ -2,7 +2,12 @@ package com.github.codersanket24.mycpassistant.toolWindow
 
 import com.github.codersanket24.mycpassistant.runner.CPTestRunner
 import com.github.codersanket24.mycpassistant.runner.TestResult
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -33,11 +38,15 @@ import javax.swing.event.DocumentListener
 /**
  * CPH / KHelper–style test runner panel for the **"CP Tests"** right tool window.
  *
- * Designed with full-width aligned components, dynamic height calculation
- * so outputs and inputs do not get cramped or vertically stretched, and
- * clear status pills matching IntelliJ's Darcula / Light themes.
+ * Features:
+ * - Dynamic height text areas (no premature scrollbars)
+ * - Auto-sync with the active editor tab (FileEditorManagerListener)
+ * - Automatic persistence of custom/edited test cases to disk
+ * - Status pills and pass/fail summary badge
  */
-class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout()) {
+class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+
+    private val log = thisLogger()
 
     // ── Status Colors ───────────────────────────────────────────────────────
     private val passColor    = JBColor(Color(38, 166, 91),   Color(80, 200, 120))
@@ -124,6 +133,26 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             add(addBtn)
         }
         add(footer, BorderLayout.SOUTH)
+
+        // Listen for active editor tab changes to auto-switch problems (CPH style)
+        project.messageBus.connect(this).subscribe(
+            FileEditorManagerListener.FILE_EDITOR_MANAGER,
+            object : FileEditorManagerListener {
+                override fun selectionChanged(event: FileEditorManagerEvent) {
+                    val newFile = event.newFile ?: return
+                    autoLoadIfSolution(newFile)
+                }
+            }
+        )
+
+        // Auto-load currently open file if available
+        FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.let {
+            autoLoadIfSolution(it)
+        }
+    }
+
+    override fun dispose() {
+        // Resources cleaned up when tool window content is closed
     }
 
     // ── Public API ─────────────────────────────────────────────────────────
@@ -165,7 +194,6 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             cards.getOrNull(r.index - 1)?.showResult(r)
         }
 
-        // Update overall stats badge
         val total = results.size
         val passed = results.count { it.status == TestResult.Status.PASS }
         statsBadge.text = "$passed / $total Passed"
@@ -181,21 +209,65 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
 
     // ── Internal Helpers ───────────────────────────────────────────────────
 
+    private fun autoLoadIfSolution(file: VirtualFile) {
+        if (file == currentFile) return
+        val parent = file.parent ?: return
+        val base   = file.nameWithoutExtension
+        if (parent.findChild("${base}_input1.txt") != null) {
+            loadFromFile(file, base)
+        }
+    }
+
+    private fun persistCardsToDisk(sourceFile: VirtualFile) {
+        val parent = sourceFile.parent ?: return
+        val base   = sourceFile.nameWithoutExtension
+        WriteCommandAction.runWriteCommandAction(project) {
+            try {
+                cards.forEachIndexed { i, card ->
+                    val n = i + 1
+                    val inpFile = parent.findChild("${base}_input$n.txt")
+                        ?: parent.createChildData(this, "${base}_input$n.txt")
+                    val expFile = parent.findChild("${base}_output$n.txt")
+                        ?: parent.createChildData(this, "${base}_output$n.txt")
+                    VfsUtil.saveText(inpFile, card.getInput())
+                    VfsUtil.saveText(expFile, card.getExpected())
+                }
+            } catch (ex: Exception) {
+                log.warn("Failed to persist test cases to disk: ${ex.message}")
+            }
+        }
+    }
+
     private fun addCard(input: String, expected: String) {
         val idx  = cards.size + 1
         val card = TestCaseCard(idx, input, expected)
         cards.add(card)
         rebuildCardsBox()
+        currentFile?.let { persistCardsToDisk(it) }
     }
 
     private fun removeCard(card: TestCaseCard) {
+        val oldSize = cards.size
         if (cards.size <= 1) {
-            // Keep at least one empty card
             card.reset("", "")
             return
         }
         cards.remove(card)
         rebuildCardsBox()
+
+        currentFile?.let { file ->
+            val parent = file.parent ?: return@let
+            val base   = file.nameWithoutExtension
+            WriteCommandAction.runWriteCommandAction(project) {
+                try {
+                    parent.findChild("${base}_input$oldSize.txt")?.delete(this)
+                    parent.findChild("${base}_output$oldSize.txt")?.delete(this)
+                    persistCardsToDisk(file)
+                } catch (ex: Exception) {
+                    log.warn("Failed to delete test files: ${ex.message}")
+                }
+            }
+        }
     }
 
     private fun rebuildCardsBox() {
@@ -205,15 +277,16 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             cardsBox.add(card)
             cardsBox.add(Box.createVerticalStrut(10))
         }
-        // Vertical glue absorbs extra space at the bottom so cards don't stretch
         cardsBox.add(Box.createVerticalGlue())
         cardsBox.revalidate()
         cardsBox.repaint()
     }
 
     private fun onRunAll() {
-        val file = currentFile
-            ?: FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
+        val activeEditorFile = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
+        val file = (if (activeEditorFile != null && activeEditorFile.parent?.findChild("${activeEditorFile.nameWithoutExtension}_input1.txt") != null) activeEditorFile else null)
+            ?: currentFile
+            ?: activeEditorFile
             ?: run {
                 problemLabel.text = "No file open in editor"
                 return
@@ -233,6 +306,9 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             problemLabel.text = "No tests found for '$base'"
             return
         }
+
+        // Persist any card edits to disk
+        persistCardsToDisk(file)
 
         val testCases = cards.map { it.getInput() to it.getExpected() }
 
@@ -331,7 +407,7 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
                 add(right, BorderLayout.EAST)
             }
 
-            // Body Column: full-width left-aligned children
+            // Body Column
             val body = JPanel().apply {
                 layout   = BoxLayout(this, BoxLayout.Y_AXIS)
                 isOpaque = false
@@ -355,13 +431,11 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
 
             add(body, BorderLayout.CENTER)
 
-            // Listen to text edits to auto-adjust heights
             bindAutoHeight(inputArea, inputScroll, 2, 8)
             bindAutoHeight(expectedArea, expectedScroll, 2, 8)
         }
 
         override fun getMaximumSize(): Dimension {
-            // Allow card to stretch horizontally, but strictly fit preferred height vertically
             return Dimension(Int.MAX_VALUE, preferredSize.height)
         }
 
@@ -449,7 +523,6 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             updateScrollPaneHeight(gotArea, gotScroll, minLines = 2, maxLines = 10)
             gotPanel.isVisible = true
 
-            // Trigger parent layout refresh so card expands cleanly to fit output
             this@CPTestToolWindowPanel.revalidate()
             this@CPTestToolWindowPanel.repaint()
         }
@@ -461,6 +534,8 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
 
             currentFile = file
             problemLabel.text = file.nameWithoutExtension
+
+            persistCardsToDisk(file)
 
             setRunning()
             runOneBtn.isEnabled = false
@@ -490,7 +565,7 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
     private fun makeTextArea(text: String, editable: Boolean) = JBTextArea(text).apply {
         isEditable    = editable
         font          = Font(Font.MONOSPACED, Font.PLAIN, 12)
-        lineWrap      = false // Preserves indentation and columns for matrices & arrays
+        lineWrap      = false
         wrapStyleWord = false
         margin        = Insets(4, 6, 4, 6)
     }

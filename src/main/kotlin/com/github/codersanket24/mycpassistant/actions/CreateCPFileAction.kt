@@ -1,8 +1,9 @@
-﻿package com.github.codersanket24.mycpassistant.actions
+package com.github.codersanket24.mycpassistant.actions
 
 import com.github.codersanket24.mycpassistant.generator.ProblemFileGenerator
 import com.github.codersanket24.mycpassistant.model.ProblemData
 import com.github.codersanket24.mycpassistant.settings.AppSettingsState
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ui.InputValidator
@@ -12,9 +13,8 @@ import com.intellij.openapi.ui.Messages
  * **Tools → Create CP File** (`Ctrl+Alt+N` / `Cmd+Option+N`)
  *
  * Allows the user to manually trigger solution-file generation without
- * the Competitive Companion browser extension.  A simple input dialog
- * collects the problem name; the rest of the metadata is left at sensible
- * defaults.
+ * the Competitive Companion browser extension. A simple input dialog
+ * collects the problem name; the rest of the metadata is left at sensible defaults.
  */
 class CreateCPFileAction : AnAction() {
 
@@ -33,8 +33,7 @@ class CreateCPFileAction : AnAction() {
             },
         ) ?: return  // user cancelled
 
-        val settings = AppSettingsState.getInstance()
-        val problem  = ProblemData(
+        val problem = ProblemData(
             name        = rawName.trim(),
             group       = "Manual",
             url         = "",
@@ -50,4 +49,6 @@ class CreateCPFileAction : AnAction() {
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project != null
     }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }

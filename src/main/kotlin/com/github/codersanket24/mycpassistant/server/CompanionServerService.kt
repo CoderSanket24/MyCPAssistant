@@ -1,4 +1,4 @@
-﻿package com.github.codersanket24.mycpassistant.server
+package com.github.codersanket24.mycpassistant.server
 
 import com.github.codersanket24.mycpassistant.generator.ProblemFileGenerator
 import com.github.codersanket24.mycpassistant.model.ProblemData
@@ -14,23 +14,16 @@ import com.sun.net.httpserver.HttpServer
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
  * Project-level service that owns the lifecycle of the embedded HTTP server.
  *
  * **Lifecycle**
- *  - The server is **started** by [CompanionServerStartupActivity] after the project fully loads.
- *  - The server is **stopped** automatically when IntelliJ disposes this service (project close).
- *
- * **Threading**
- *  - The server runs on a single *daemon* thread (won't block JVM shutdown).
- *  - Incoming requests are handled on that thread; heavy work is delegated to
- *    [ProblemFileGenerator.generate], which schedules VFS writes on IntelliJ's write thread.
- *
- * **Port selection**
- *  - The port is read from [AppSettingsState] at start time.
- *  - If the configured port is busy, a warning is logged and no server is started.
+ *  - Started by [com.github.codersanket24.mycpassistant.startup.CompanionServerStartupActivity]
+ *    after the project loads.
+ *  - Stopped automatically when IntelliJ disposes this service (project close).
  */
 @Service(Service.Level.PROJECT)
 class CompanionServerService(private val project: Project) : Disposable {
@@ -41,9 +34,13 @@ class CompanionServerService(private val project: Project) : Disposable {
     @Volatile
     private var server: HttpServer? = null
 
+    @Volatile
+    private var executor: ExecutorService? = null
+
     // ── Public API ─────────────────────────────────────────────────────────
 
     /** Starts the HTTP server. Idempotent – calling twice has no effect. */
+    @Synchronized
     fun start() {
         if (server != null) return
 
@@ -51,10 +48,13 @@ class CompanionServerService(private val project: Project) : Disposable {
         try {
             val httpServer = HttpServer.create(InetSocketAddress(port), /* backlog = */ 0)
             httpServer.createContext("/", ::handleRequest)
-            // Single daemon thread so we don't block JVM exit
-            httpServer.executor = Executors.newSingleThreadExecutor { runnable ->
+
+            val exec = Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "MyCPAssistant-HTTP").also { it.isDaemon = true }
             }
+            executor = exec
+            httpServer.executor = exec
+
             httpServer.start()
             server = httpServer
             log.info("MyCPAssistant: HTTP server started on port $port")
@@ -63,15 +63,21 @@ class CompanionServerService(private val project: Project) : Disposable {
         }
     }
 
+    /** Restarts the HTTP server (e.g. after port changes in settings). */
+    @Synchronized
+    fun restart() {
+        dispose()
+        start()
+    }
+
     // ── Disposable ─────────────────────────────────────────────────────────
 
-    /**
-     * Called by IntelliJ when the project is closed (or the plugin is unloaded).
-     * Stops the server with a short grace period so in-flight requests can finish.
-     */
+    @Synchronized
     override fun dispose() {
         server?.stop(/* delaySeconds = */ 1)
         server = null
+        executor?.shutdownNow()
+        executor = null
         log.info("MyCPAssistant: HTTP server stopped.")
     }
 

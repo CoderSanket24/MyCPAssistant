@@ -26,11 +26,6 @@ import java.time.LocalDate
  *  4. Write the solution source file and numbered test-case files.
  *  5. Open the solution file in the editor on the EDT.
  *  6. Show a success notification balloon.
- *
- * **Threading contract**
- *  - [generate] may be called from any thread (e.g. the server's daemon thread).
- *  - All VFS / PSI writes are wrapped in [WriteCommandAction].
- *  - Editor interaction and notifications are dispatched via [ApplicationManager.getApplication().invokeLater].
  */
 object ProblemFileGenerator {
 
@@ -39,12 +34,6 @@ object ProblemFileGenerator {
 
     // ── Public API ─────────────────────────────────────────────────────────
 
-    /**
-     * Entry-point. Safe to call from a background/daemon thread.
-     *
-     * @param project IntelliJ project handle.
-     * @param problem Parsed payload from Competitive Companion.
-     */
     fun generate(project: Project, problem: ProblemData) {
         val settings   = AppSettingsState.getInstance()
         val safeName   = sanitizeName(problem.name)
@@ -53,7 +42,6 @@ object ProblemFileGenerator {
 
         val outDir = File(projectDir, settings.outputDirectory)
 
-        // All VFS mutations must happen inside a WriteCommandAction
         WriteCommandAction.runWriteCommandAction(project) {
             try {
                 // 1. Ensure output directory exists (VFS-aware)
@@ -61,7 +49,6 @@ object ProblemFileGenerator {
                     ?: error("Could not create output directory: ${outDir.absolutePath}")
 
                 // 1b. Register the directory as a source root so IntelliJ compiles it.
-                //     Without this, the ▶️ run button gets ClassNotFoundException.
                 ensureSourceRoot(project, outVDir)
 
                 // 2. Write solution source file
@@ -117,18 +104,18 @@ object ProblemFileGenerator {
     fun sanitizeName(rawName: String): String {
         // Drop leading contest-label patterns like "A.", "1234A -", "Problem B:"
         val stripped = rawName
-            .replace(Regex("""^\w+[.\-:]\s*"""), "")  // drop "A. " / "A - " / "A:"
+            .replace(Regex("""^(?:(?:Problem|Task)\s+)?[A-Za-z0-9]+(?:\s*[.\-:]|\s*–)\s*""", RegexOption.IGNORE_CASE), "")
             .trim()
-            .ifEmpty { rawName.trim() }                 // fall back to original if nothing left
+            .ifEmpty { rawName.trim() }
 
         return stripped
-            .split(Regex("""[\s\-_.,!?]+"""))           // split on common separators
+            .split(Regex("""[\s\-_.,!?]+"""))
             .filter { it.isNotBlank() }
             .joinToString("") { word ->
                 word.replaceFirstChar { it.uppercaseChar() }
             }
-            .replace(Regex("""[^A-Za-z0-9_$]"""), "_") // ensure valid identifier chars
-            .let { if (it.first().isDigit()) "_$it" else it } // identifiers can't start with digit
+            .replace(Regex("""[^A-Za-z0-9_$]"""), "_")
+            .let { if (it.isNotEmpty() && it.first().isDigit()) "_$it" else it }
             .ifEmpty { "Solution" }
     }
 
@@ -145,8 +132,7 @@ object ProblemFileGenerator {
             .replace("\${GROUP}",         problem.group)
 
     /**
-     * Creates (or overwrites) a file inside [parentVDir] using the VFS so
-     * IntelliJ's indexer picks it up immediately.
+     * Creates (or overwrites) a file inside [parentVDir] using the VFS.
      */
     private fun writeFile(parentVDir: VirtualFile, name: String, content: String): VirtualFile {
         val existing = parentVDir.findChild(name)
@@ -168,22 +154,15 @@ object ProblemFileGenerator {
     }
 
     /**
-     * Registers [dir] as a source root in the first available module so that
-     * IntelliJ's compiler includes it in the build and the ▶️ run config works.
-     *
-     * - Idempotent: does nothing if the folder is already a source root.
-     * - Safe: wrapped in [ModuleRootModificationUtil.updateModel] inside the
-     *   existing [WriteCommandAction], so no extra write lock is needed.
+     * Registers [dir] as a source root in the first available module.
      */
     private fun ensureSourceRoot(project: Project, dir: VirtualFile) {
         val module = ModuleManager.getInstance(project).modules.firstOrNull() ?: return
         ModuleRootModificationUtil.updateModel(module) { model ->
-            // Find the content entry whose root contains our directory
             val entry = model.contentEntries.firstOrNull { e ->
                 dir.url.startsWith(e.url)
-            } ?: model.addContentEntry(dir) // create one if needed
+            } ?: model.addContentEntry(dir)
 
-            // Only add if not already registered
             if (entry.sourceFolders.none { it.url == dir.url }) {
                 entry.addSourceFolder(dir.url, /* isTestSource = */ false)
                 log.info("ProblemFileGenerator: registered '${dir.path}' as source root")

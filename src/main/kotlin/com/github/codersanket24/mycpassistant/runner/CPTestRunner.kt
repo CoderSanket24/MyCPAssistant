@@ -4,6 +4,7 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -17,20 +18,16 @@ import java.util.concurrent.TimeUnit
  *
  * ## Key design decisions
  *
- * ### No saveAllDocuments()
- * IntelliJ 2025+ requires a write-intent lock to call [com.intellij.openapi.fileEditor.FileDocumentManager.saveAllDocuments],
- * but button-click EDT callbacks are write-unsafe. Instead, we read the
- * **live in-memory VirtualFile content** via [ApplicationManager.getApplication().runReadAction]
- * and write it to a temp `.java` file — javac never touches the on-disk file directly.
- * This always compiles what the user has typed, without needing any file save.
+ * ### Live editor content
+ * Reads live in-memory content from [FileDocumentManager] so unsaved changes
+ * are compiled and executed without forcing the user to hit Ctrl+S.
  *
- * ### Guaranteed onComplete
- * A try/catch wraps the entire background work so [onComplete] is **always** called —
- * even on unexpected exceptions — preventing the Run button from staying permanently disabled.
+ * ### Full result broadcasting
+ * Errors (e.g. compilation failure or read errors) are broadcast to ALL test cases
+ * so no card in the UI is left stuck in the "Running..." state.
  *
  * ### Stdin via daemon thread
- * A daemon thread writes stdin and closes the stream (EOF) while the main
- * thread reads stdout/stderr via [CompletableFuture]s, preventing deadlocks.
+ * Process stdin is fed in a separate daemon thread to avoid deadlock on output buffers.
  */
 object CPTestRunner {
 
@@ -39,12 +36,7 @@ object CPTestRunner {
     const val COMPILE_TIMEOUT_MS = 30_000
 
     /**
-     * Entry-point — safe to call from the EDT (e.g. a button-click handler).
-     *
-     * @param sourceFile  The solution `.java` file open in the editor.
-     * @param testCases   (input, expected) pairs read from the UI cards.
-     * @param onStart     Called on EDT before work begins (disable button / show spinner).
-     * @param onComplete  Called on EDT with results — **always called**, even on error.
+     * Entry-point — safe to call from the EDT (e.g. button click).
      */
     fun runAll(
         project: Project,
@@ -60,12 +52,13 @@ object CPTestRunner {
         onStart()
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            // Guaranteed to call onComplete so the Run button is always re-enabled.
             val results = try {
                 executeAll(sourceFile, testCases)
             } catch (ex: Exception) {
                 log.warn("CPTestRunner: unexpected error", ex)
-                listOf(buildError(1, "Unexpected error: ${ex.message}"))
+                testCases.mapIndexed { idx, (inp, exp) ->
+                    TestResult(idx + 1, inp, exp, "", TestResult.Status.ERROR, 0L, "Unexpected error: ${ex.message}")
+                }
             }
             ApplicationManager.getApplication().invokeLater { onComplete(results) }
         }
@@ -81,29 +74,35 @@ object CPTestRunner {
         val workDir   = createTempWorkDir(className)
 
         return try {
-            // 1. Read the LIVE in-memory content from the VirtualFile.
-            //    runReadAction is safe from background threads and always returns
-            //    what the user has typed (even unsaved changes).
+            // 1. Read live in-memory content
             val sourceContent = readVfsContent(sourceFile)
-                ?: return listOf(buildError(1, "Cannot read source file: ${sourceFile.name}"))
+            if (sourceContent == null) {
+                val errorMsg = "Cannot read source file: ${sourceFile.name}"
+                return testCases.mapIndexed { idx, (inp, exp) ->
+                    TestResult(idx + 1, inp, exp, "", TestResult.Status.ERROR, 0L, errorMsg)
+                }
+            }
 
-            // 2. Write content to a temp .java file so javac has a path to compile.
+            // 2. Write to temp file for javac
             val srcFile = File(workDir, "$className.java")
             srcFile.parentFile.mkdirs()
             srcFile.writeText(sourceContent, Charsets.UTF_8)
 
-            // 3. Compile with javac into a classes/ sub-directory.
+            // 3. Compile
             val classOutDir = File(workDir, "classes").also { it.mkdirs() }
             val compileError = compileSingleFile(srcFile, classOutDir)
             if (compileError != null) {
-                return listOf(buildError(1, "Compilation failed:\n$compileError"))
+                val errorMsg = "Compilation failed:\n$compileError"
+                return testCases.mapIndexed { idx, (inp, exp) ->
+                    TestResult(idx + 1, inp, exp, "", TestResult.Status.ERROR, 0L, errorMsg)
+                }
             }
 
-            // 4. Detect the FQCN (reads package declaration from the in-memory source).
+            // 4. Detect FQCN
             val mainClass = detectMainClass(sourceContent, className)
             val javaExe   = resolveJavaExe()
 
-            // 5. Run each test case.
+            // 5. Run each test case
             testCases.mapIndexed { idx, (input, expected) ->
                 runSingleTest(javaExe, classOutDir.absolutePath, mainClass, idx + 1, input, expected)
             }
@@ -116,7 +115,6 @@ object CPTestRunner {
 
     private fun compileSingleFile(srcFile: File, classOutDir: File): String? {
         val javacExe = resolveJavacExe()
-            ?: return "javac not found. Ensure a JDK (not just JRE) is on PATH."
         return try {
             val cmd = GeneralCommandLine(javacExe, "-d", classOutDir.absolutePath, srcFile.absolutePath)
                 .withCharset(StandardCharsets.UTF_8)
@@ -142,13 +140,12 @@ object CPTestRunner {
         return try {
             val process = ProcessBuilder(javaExe, "-cp", classPath, mainClass).start()
 
-            // Write stdin in daemon thread; close stream to signal EOF to the program.
+            // Feed stdin in daemon thread
             Thread {
                 try { process.outputStream.use { it.write(input.toByteArray(StandardCharsets.UTF_8)) } }
                 catch (_: Exception) {}
             }.also { it.isDaemon = true; it.start() }
 
-            // Read stdout + stderr concurrently to avoid buffer-full deadlock.
             val stdoutFuture = CompletableFuture.supplyAsync {
                 process.inputStream.readBytes().toString(StandardCharsets.UTF_8)
             }
@@ -170,16 +167,23 @@ object CPTestRunner {
             val exitCode = process.exitValue()
 
             when {
-                exitCode != 0 -> TestResult(index, input, expected,
-                    stdout, TestResult.Status.ERROR, elapsed,
-                    "Exit code $exitCode\n${stderr.take(400)}")
-                outputMatches(expected, stdout) -> TestResult(index, input, expected,
-                    stdout, TestResult.Status.PASS, elapsed)
-                else -> TestResult(index, input, expected, stdout, TestResult.Status.FAIL, elapsed)
+                exitCode != 0 -> TestResult(
+                    index, input, expected, stdout, TestResult.Status.ERROR, elapsed,
+                    "Exit code $exitCode\n${stderr.take(400)}"
+                )
+                // If expected output is empty or matches stdout, consider it PASS
+                expected.isBlank() || outputMatches(expected, stdout) -> TestResult(
+                    index, input, expected, stdout, TestResult.Status.PASS, elapsed
+                )
+                else -> TestResult(
+                    index, input, expected, stdout, TestResult.Status.FAIL, elapsed
+                )
             }
         } catch (ex: Exception) {
-            TestResult(index, input, expected, "", TestResult.Status.ERROR,
-                System.currentTimeMillis() - start, ex.message ?: "Unknown error")
+            TestResult(
+                index, input, expected, "", TestResult.Status.ERROR,
+                System.currentTimeMillis() - start, ex.message ?: "Unknown error"
+            )
         }
     }
 
@@ -188,19 +192,14 @@ object CPTestRunner {
     /** Reads the live editor content — includes unsaved changes, safe from any thread. */
     private fun readVfsContent(vf: VirtualFile): String? = try {
         ApplicationManager.getApplication().runReadAction<String> {
-            // Document.text = in-memory editor buffer (includes unsaved edits).
-            // VfsUtil.loadText = on-disk content (stale if user hasn't saved).
-            // Always prefer the Document so Ctrl+S is never required before running.
-            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
-                .getDocument(vf)?.text
-                ?: VfsUtil.loadText(vf)   // fallback: file not open in any editor
+            FileDocumentManager.getInstance().getDocument(vf)?.text ?: VfsUtil.loadText(vf)
         }
     } catch (ex: Exception) {
         log.warn("readVfsContent failed: ${ex.message}")
         null
     }
 
-    /** Extracts the FQCN by scanning the source text for a `package` declaration. */
+    /** Extracts the FQCN by scanning source text for a package declaration. */
     private fun detectMainClass(sourceContent: String, className: String): String {
         val pkg = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
             .find(sourceContent)?.groupValues?.getOrNull(1)
@@ -215,21 +214,28 @@ object CPTestRunner {
 
     private fun resolveJavaExe(): String {
         val ext = if (isWindows()) ".exe" else ""
-        val f = File(System.getProperty("java.home"), "bin/java$ext")
-        return if (f.exists()) f.absolutePath else "java"
+        val fromJavaHome = File(System.getProperty("java.home"), "bin/java$ext")
+        if (fromJavaHome.exists()) return fromJavaHome.absolutePath
+
+        val fromEnv = System.getenv("JAVA_HOME")?.let { File(it, "bin/java$ext") }
+        if (fromEnv != null && fromEnv.exists()) return fromEnv.absolutePath
+
+        return "java"
     }
 
-    private fun resolveJavacExe(): String? {
+    private fun resolveJavacExe(): String {
         val ext = if (isWindows()) ".exe" else ""
-        val f = File(System.getProperty("java.home"), "bin/javac$ext")
-        return if (f.exists()) f.absolutePath else null
+        val fromJavaHome = File(System.getProperty("java.home"), "bin/javac$ext")
+        if (fromJavaHome.exists()) return fromJavaHome.absolutePath
+
+        val fromEnv = System.getenv("JAVA_HOME")?.let { File(it, "bin/javac$ext") }
+        if (fromEnv != null && fromEnv.exists()) return fromEnv.absolutePath
+
+        return "javac"
     }
 
     private fun createTempWorkDir(prefix: String) =
         File(System.getProperty("java.io.tmpdir"), "myCPA_${prefix}_${System.currentTimeMillis()}")
 
     private fun isWindows() = System.getProperty("os.name", "").lowercase().contains("win")
-
-    private fun buildError(index: Int, msg: String) =
-        TestResult(index, "", "", msg, TestResult.Status.ERROR, 0L, msg)
 }
