@@ -5,14 +5,52 @@
     <vendor url="https://github.com/CoderSanket24">codersanket24</vendor>
 
     <description><![CDATA[
-        <p><b>MyCPAssistant</b> &mdash; A Competitive Programming companion plugin for IntelliJ IDEA.</p>
+        <h2>⚡ MyCPAssistant &mdash; Competitive Programming Companion for IntelliJ IDEA</h2>
+        <p>
+            <b>MyCPAssistant</b> is a powerful, modern, and lightweight competitive programming companion for IntelliJ IDEA.
+            It seamlessly integrates with the <b>Competitive Companion</b> browser extension to parse problems with a single click,
+            generate solution files, and test your code in an interactive CPH/KHelper–style sidebar.
+        </p>
+
+        <h3>✨ Key Features</h3>
         <ul>
-            <li>Listens for problem data from the <b>Competitive Companion</b> browser extension.</li>
-            <li>Auto-generates solution files and test cases in your configured output directory.</li>
-            <li>Fully customisable: output path, file extension, listener port, and code template with placeholders.</li>
-            <li>Manual file creation via <b>Tools &rarr; Create CP File</b> (<code>Ctrl+Alt+N</code>).</li>
+            <li><b>⚡ One-Click Problem Parsing:</b> Receives problem statements, metadata, and test cases directly from Competitive Companion (Codeforces, AtCoder, LeetCode, CodeChef, CSES, HackerRank, and 60+ online judges).</li>
+            <li><b>🖥️ Interactive Test Runner (CPH Style):</b> Clean, right-sidebar tool window with auto-expanding test cards, per-test run buttons, wall-clock execution timing, and status badges (<code>PASS</code>, <code>FAIL</code>, <code>ERROR</code>, <code>TLE</code>).</li>
+            <li><b>🔄 Live Editor Compilation:</b> Runs tests directly from your active in-memory editor buffer &mdash; no need to spam <code>Ctrl+S</code> before running!</li>
+            <li><b>📂 Zero-Clutter Architecture:</b> Cleanly separates solution code in <code>src/</code> while isolating all sample input/output files in a dedicated <code>.cptests/</code> directory.</li>
+            <li><b>🔍 Auto-Sync Active Editor:</b> Automatically detects and loads the test cases for whatever problem file is currently active in the editor tab.</li>
+            <li><b>✏️ Custom Test Cases:</b> Easily add custom test cases with <b>+ Add Test Case</b> or edit existing inputs/outputs with automatic disk synchronization.</li>
+            <li><b>🛠️ Fully Customizable:</b> Configure custom solution templates (with variables like <code>${PROBLEM_NAME}</code>, <code>${DATE}</code>, <code>${URL}</code>, <code>${TIME_LIMIT}</code>), output directories, listener ports, and file extensions.</li>
+            <li><b>⌨️ Keyboard Shortcuts:</b>
+                <ul>
+                    <li><code>Ctrl+Shift+F10</code> &mdash; Run all test cases for current solution</li>
+                    <li><code>Ctrl+Alt+N</code> &mdash; Manually create a new CP solution file</li>
+                </ul>
+            </li>
         </ul>
+
+        <h3>🚀 Quick Start</h3>
+        <ol>
+            <li>Install the <b>Competitive Companion</b> extension in your browser (Chrome / Firefox / Edge).</li>
+            <li>Open your CP project in IntelliJ IDEA.</li>
+            <li>Navigate to any problem on Codeforces, AtCoder, or other supported platforms and click the Competitive Companion green plus icon in your browser.</li>
+            <li>Your solution file is immediately created and opened, and all sample test cases appear in the <b>CP Tests</b> sidebar on the right!</li>
+            <li>Write your solution and press <b>▶ Run All</b> to test your code!</li>
+        </ol>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>1.0.0 &mdash; Initial Release</h3>
+        <ul>
+            <li>Initial public release of MyCPAssistant on JetBrains Marketplace.</li>
+            <li>Full Competitive Companion integration on port 27121.</li>
+            <li>Interactive CPH-style right tool window with test cards, live execution timing, and status badges.</li>
+            <li>In-memory live editor compilation (no manual saving required).</li>
+            <li>Clean directory architecture with dedicated <code>.cptests/</code> storage.</li>
+            <li>Automatic test case loading on tab switch or problem reopen.</li>
+            <li>Configurable code templates, paths, and port settings under <b>Settings &rarr; Tools &rarr; Custom CP Companion</b>.</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.java</depends>
@@ -75,8 +113,6 @@
             description="Compile and run all test cases for the current CP solution file">
             <add-to-group group-id="ToolsMenu"      anchor="last"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
-            <!-- Ctrl+Alt+T conflicts with IntelliJ's "Surround With" — use Ctrl+Shift+F10 instead.
-                 The ▶ Run Tests button in the CP Tests tool window is the primary trigger. -->
             <keyboard-shortcut keymap="$default"      first-keystroke="ctrl shift F10"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift F10"/>
         </action>

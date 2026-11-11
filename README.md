@@ -1,45 +1,54 @@
-# MyCPAssistant
+# MyCPAssistant ⚡
 
-![Build](https://github.com/CoderSanket24/MyCPAssistant/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
+**A powerful, modern, and lightweight Competitive Programming companion plugin for IntelliJ IDEA.**
 
-## Template ToDo list
-- [x] Create a new [IntelliJ Platform Plugin Template][template] project.
-- [ ] Get familiar with the [template documentation][template].
-- [ ] Adjust the [group](./gradle.properties), as well as the [id](./src/main/resources/META-INF/plugin.xml), [name](./src/main/resources/META-INF/plugin.xml), and [sources package](./src/main/kotlin).
-- [ ] Adjust the plugin [description](./src/main/resources/META-INF/plugin.xml) (see [Tips][docs:plugin-description]) and this README to describe what your plugin does.
-- [ ] Review the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
-- [ ] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate) for the first time.
-- [ ] Set the `MARKETPLACE_ID` in the above README badges. You can obtain it once the plugin is published to JetBrains Marketplace.
-- [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate) related [secrets](https://github.com/JetBrains/intellij-platform-plugin-template#environment-variables).
-- [ ] Set the [Deployment Token](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html?from=IJPluginTemplate).
-- [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified about releases containing new features and fixes.
-
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
-
-## Installation
-
-- Using the IDE built-in plugin system:
-
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search for "MyCPAssistant"</kbd> >
-  <kbd>Install</kbd>
-
-- Using JetBrains Marketplace:
-
-  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID) and install it by clicking the <kbd>Install to ...</kbd> button in case your IDE is running.
-
-  You can also download the [latest release](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID/versions) from JetBrains Marketplace and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
-
-- Manually:
-
-  Download the [latest release](https://github.com/CoderSanket24/MyCPAssistant/releases/latest) and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
-
+Inspired by CPH (VS Code) and KHelper, **MyCPAssistant** integrates with the [Competitive Companion](https://github.com/jmerle/competitive-companion) browser extension to streamline your competitive programming workflow in IntelliJ IDEA.
 
 ---
-Plugin based on the [IntelliJ Platform Plugin Template][template].
 
-[template]: https://github.com/JetBrains/intellij-platform-plugin-template
-[docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
+## ✨ Features
+
+- **⚡ One-Click Problem Parsing**: Parse problems directly from Codeforces, AtCoder, LeetCode, CodeChef, CSES, HackerRank, and 60+ online judges.
+- **🖥️ CPH-Style Interactive Test Runner**: Dedicated right-sidebar tool window with auto-expanding test cards, live execution timers, and clear status badges (`PASS`, `FAIL`, `ERROR`, `TLE`).
+- **🔄 Live In-Memory Compilation**: Runs your tests directly from the editor buffer &mdash; no need to save (`Ctrl+S`) before running!
+- **📂 Zero-Clutter File Organization**: Solutions stay cleanly in `src/`, while sample inputs/outputs are isolated in `.cptests/`.
+- **🔍 Active Tab Auto-Sync**: The test runner automatically switches and displays test cases whenever you select or open a problem file in the editor.
+- **✏️ Custom Test Cases**: Add and edit custom test cases with automatic disk synchronization.
+- **🛠️ Fully Customizable**: Custom code templates (with placeholders `${PROBLEM_NAME}`, `${DATE}`, `${URL}`, etc.), output directories, and ports configurable in **Settings &rarr; Tools &rarr; Custom CP Companion**.
+
+---
+
+## ⌨️ Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl + Shift + F10` | Run all test cases for the active CP solution |
+| `Ctrl + Alt + N` | Manually create a CP solution file without browser extension |
+
+---
+
+## 🚀 Quick Start
+
+1. Install the **Competitive Companion** extension in your browser ([Chrome](https://chromewebstore.google.com/detail/competitive-companion/cjnmckjndlpiamhfimnnachnppdelkej) / [Firefox](https://addons.mozilla.org/en-US/firefox/addon/competitive-companion/)).
+2. Open your competitive programming project in IntelliJ IDEA.
+3. Open any problem page on Codeforces, AtCoder, etc., and click the green **+** Competitive Companion icon in your browser.
+4. Your solution file will automatically generate and open, and all sample test cases will appear in the **CP Tests** sidebar on the right!
+5. Write your solution and press **▶ Run All** (or `Ctrl+Shift+F10`) to test!
+
+---
+
+## 📦 Installation
+
+### From JetBrains Marketplace
+Search for **"MyCPAssistant"** in:
+`Settings` &rarr; `Plugins` &rarr; `Marketplace` &rarr; Install
+
+### From Disk (ZIP)
+1. Download `MyCPAssistant-1.0.0.zip` from [Releases](https://github.com/CoderSanket24/MyCPAssistant/releases).
+2. In IntelliJ IDEA: `Settings` &rarr; `Plugins` &rarr; `⚙️` &rarr; `Install Plugin from Disk...`
+3. Select the `.zip` file and restart IntelliJ.
+
+---
+
+## 📄 License
+This project is licensed under the [Apache License 2.0](LICENSE).
