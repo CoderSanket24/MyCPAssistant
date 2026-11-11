@@ -2,7 +2,9 @@ package com.github.codersanket24.mycpassistant.toolWindow
 
 import com.github.codersanket24.mycpassistant.runner.CPTestRunner
 import com.github.codersanket24.mycpassistant.runner.TestResult
+import com.github.codersanket24.mycpassistant.settings.AppSettingsState
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -24,6 +26,7 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.Insets
+import java.io.File
 import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -32,6 +35,8 @@ import javax.swing.JPanel
 import javax.swing.ScrollPaneConstants
 import javax.swing.SwingConstants
 import javax.swing.border.CompoundBorder
+import javax.swing.event.AncestorEvent
+import javax.swing.event.AncestorListener
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
@@ -40,7 +45,8 @@ import javax.swing.event.DocumentListener
  *
  * Features:
  * - Dynamic height text areas (no premature scrollbars)
- * - Auto-sync with the active editor tab (FileEditorManagerListener)
+ * - Auto-sync with the active editor tab and automatic load when reopening questions
+ * - Single dedicated test directory (`.cptests/`) for all questions, keeping `src/` clean
  * - Automatic persistence of custom/edited test cases to disk
  * - Status pills and pass/fail summary badge
  */
@@ -134,46 +140,63 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         }
         add(footer, BorderLayout.SOUTH)
 
-        // Listen for active editor tab changes to auto-switch problems (CPH style)
+        // 1. AncestorListener: loads/refreshes test cases automatically whenever panel is displayed
+        addAncestorListener(object : AncestorListener {
+            override fun ancestorAdded(event: AncestorEvent?) {
+                refreshFromActiveEditor()
+            }
+            override fun ancestorRemoved(event: AncestorEvent?) {}
+            override fun ancestorMoved(event: AncestorEvent?) {}
+        })
+
+        // 2. FileEditorManagerListener: loads test cases automatically when opening or switching tabs
         project.messageBus.connect(this).subscribe(
             FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener {
                 override fun selectionChanged(event: FileEditorManagerEvent) {
-                    val newFile = event.newFile ?: return
-                    autoLoadIfSolution(newFile)
+                    event.newFile?.let { autoLoadIfSolution(it) }
+                }
+
+                override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
+                    autoLoadIfSolution(file)
                 }
             }
         )
 
-        // Auto-load currently open file if available
-        FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.let {
-            autoLoadIfSolution(it)
+        // 3. Initial check on startup
+        ApplicationManager.getApplication().invokeLater {
+            refreshFromActiveEditor()
         }
     }
 
     override fun dispose() {
-        // Resources cleaned up when tool window content is closed
+        // Cleanup resources on disposal
     }
 
     // ── Public API ─────────────────────────────────────────────────────────
 
     /**
-     * Loads test cases from the filesystem and populates cards.
+     * Loads test cases from the dedicated testCasesDirectory (.cptests/) or sibling folder.
      */
     fun loadFromFile(sourceFile: VirtualFile, problemName: String) {
         currentFile = sourceFile
         problemLabel.text = problemName
         statsBadge.isVisible = false
 
-        val parent = sourceFile.parent ?: return
-        val base   = sourceFile.nameWithoutExtension
-
         cards.clear()
+
+        val testDir   = resolveTestCasesDir(project, sourceFile)
+        val parentDir = sourceFile.parent
+        val base      = sourceFile.nameWithoutExtension
 
         var n = 1
         while (true) {
-            val inputFile = parent.findChild("${base}_input$n.txt") ?: break
-            val outFile   = parent.findChild("${base}_output$n.txt")
+            val inputFile = testDir?.findChild("${base}_input$n.txt")
+                ?: parentDir?.findChild("${base}_input$n.txt")
+                ?: break
+            val outFile   = testDir?.findChild("${base}_output$n.txt")
+                ?: parentDir?.findChild("${base}_output$n.txt")
+
             val inputText = VfsUtil.loadText(inputFile)
             val expText   = outFile?.let { VfsUtil.loadText(it) } ?: ""
             cards.add(TestCaseCard(n, inputText, expText))
@@ -204,31 +227,36 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         repaint()
     }
 
+    /** Refreshes the panel based on whatever file is currently active in the editor. */
+    fun refreshFromActiveEditor() {
+        val file = FileEditorManager.getInstance(project).selectedFiles.firstOrNull() ?: return
+        autoLoadIfSolution(file)
+    }
+
     /** Called by [com.github.codersanket24.mycpassistant.actions.RunCPTestsAction]. */
     fun onRunAllPublic() = onRunAll()
 
     // ── Internal Helpers ───────────────────────────────────────────────────
 
     private fun autoLoadIfSolution(file: VirtualFile) {
-        if (file == currentFile) return
-        val parent = file.parent ?: return
-        val base   = file.nameWithoutExtension
-        if (parent.findChild("${base}_input1.txt") != null) {
-            loadFromFile(file, base)
-        }
+        // Skip only if this exact file is already loaded AND has test cards
+        if (file == currentFile && cards.isNotEmpty() && cards.any { it.getInput().isNotBlank() || it.getExpected().isNotBlank() }) return
+        if (!hasTestCases(project, file)) return
+        loadFromFile(file, file.nameWithoutExtension)
     }
 
     private fun persistCardsToDisk(sourceFile: VirtualFile) {
-        val parent = sourceFile.parent ?: return
-        val base   = sourceFile.nameWithoutExtension
+        val targetDir = resolveOrCreateTestCasesDir(project, sourceFile) ?: return
+        val base      = sourceFile.nameWithoutExtension
+
         WriteCommandAction.runWriteCommandAction(project) {
             try {
                 cards.forEachIndexed { i, card ->
                     val n = i + 1
-                    val inpFile = parent.findChild("${base}_input$n.txt")
-                        ?: parent.createChildData(this, "${base}_input$n.txt")
-                    val expFile = parent.findChild("${base}_output$n.txt")
-                        ?: parent.createChildData(this, "${base}_output$n.txt")
+                    val inpFile = targetDir.findChild("${base}_input$n.txt")
+                        ?: targetDir.createChildData(this, "${base}_input$n.txt")
+                    val expFile = targetDir.findChild("${base}_output$n.txt")
+                        ?: targetDir.createChildData(this, "${base}_output$n.txt")
                     VfsUtil.saveText(inpFile, card.getInput())
                     VfsUtil.saveText(expFile, card.getExpected())
                 }
@@ -256,12 +284,12 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
         rebuildCardsBox()
 
         currentFile?.let { file ->
-            val parent = file.parent ?: return@let
-            val base   = file.nameWithoutExtension
+            val targetDir = resolveTestCasesDir(project, file) ?: file.parent ?: return@let
+            val base      = file.nameWithoutExtension
             WriteCommandAction.runWriteCommandAction(project) {
                 try {
-                    parent.findChild("${base}_input$oldSize.txt")?.delete(this)
-                    parent.findChild("${base}_output$oldSize.txt")?.delete(this)
+                    targetDir.findChild("${base}_input$oldSize.txt")?.delete(this)
+                    targetDir.findChild("${base}_output$oldSize.txt")?.delete(this)
                     persistCardsToDisk(file)
                 } catch (ex: Exception) {
                     log.warn("Failed to delete test files: ${ex.message}")
@@ -284,7 +312,7 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
 
     private fun onRunAll() {
         val activeEditorFile = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()
-        val file = (if (activeEditorFile != null && activeEditorFile.parent?.findChild("${activeEditorFile.nameWithoutExtension}_input1.txt") != null) activeEditorFile else null)
+        val file = (if (activeEditorFile != null && hasTestCases(project, activeEditorFile)) activeEditorFile else null)
             ?: currentFile
             ?: activeEditorFile
             ?: run {
@@ -292,10 +320,9 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
                 return
             }
 
-        val base   = file.nameWithoutExtension
-        val parent = file.parent
+        val base = file.nameWithoutExtension
 
-        if (cards.isEmpty() && parent != null) {
+        if (cards.isEmpty()) {
             loadFromFile(file, base)
         } else {
             currentFile = file
@@ -307,7 +334,6 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             return
         }
 
-        // Persist any card edits to disk
         persistCardsToDisk(file)
 
         val testCases = cards.map { it.getInput() to it.getExpected() }
@@ -604,5 +630,39 @@ class CPTestToolWindowPanel(private val project: Project) : JPanel(BorderLayout(
             override fun removeUpdate(e: DocumentEvent?) = update()
             override fun changedUpdate(e: DocumentEvent?) = update()
         })
+    }
+
+    companion object {
+        /**
+         * Resolves the directory where test cases live.
+         * Looks first in `testCasesDirectory` (.cptests/), then falls back to `sourceFile.parent`.
+         */
+        fun resolveTestCasesDir(project: Project, sourceFile: VirtualFile?): VirtualFile? {
+            val basePath = project.basePath ?: return sourceFile?.parent
+            val testDirName = AppSettingsState.getInstance().testCasesDirectory.ifBlank { ".cptests" }
+            val testDir = File(basePath, testDirName)
+            val vDir = VfsUtil.findFileByIoFile(testDir, true)
+            return vDir ?: sourceFile?.parent
+        }
+
+        /**
+         * Resolves or creates the dedicated testCasesDirectory (.cptests/).
+         */
+        fun resolveOrCreateTestCasesDir(project: Project, sourceFile: VirtualFile?): VirtualFile? {
+            val basePath = project.basePath ?: return sourceFile?.parent
+            val testDirName = AppSettingsState.getInstance().testCasesDirectory.ifBlank { ".cptests" }
+            val testDir = File(basePath, testDirName)
+            return VfsUtil.createDirectoryIfMissing(testDir.absolutePath) ?: sourceFile?.parent
+        }
+
+        /**
+         * Checks if a file has test cases either in the dedicated `.cptests/` directory or as sibling files.
+         */
+        fun hasTestCases(project: Project, sourceFile: VirtualFile): Boolean {
+            val base = sourceFile.nameWithoutExtension
+            val testDir = resolveTestCasesDir(project, sourceFile)
+            if (testDir?.findChild("${base}_input1.txt") != null) return true
+            return sourceFile.parent?.findChild("${base}_input1.txt") != null
+        }
     }
 }

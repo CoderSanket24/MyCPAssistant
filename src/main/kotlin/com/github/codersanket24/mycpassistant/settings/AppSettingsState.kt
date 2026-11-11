@@ -23,8 +23,14 @@ class AppSettingsState : PersistentStateComponent<AppSettingsState> {
 
     // ── Configurable fields ────────────────────────────────────────────────
 
-    /** Relative path inside the project where solution files are created. */
+    /** Relative path inside the project where solution source files are created. */
     var outputDirectory: String = "src"
+
+    /**
+     * Relative path inside the project where all test cases are stored.
+     * Keeps the solution directory clean and uncluttered.
+     */
+    var testCasesDirectory: String = ".cptests"
 
     /** TCP port that the embedded HTTP server listens on. */
     var listenerPort: Int = 27121
@@ -53,10 +59,11 @@ class AppSettingsState : PersistentStateComponent<AppSettingsState> {
     override fun getState(): AppSettingsState = this
 
     override fun loadState(state: AppSettingsState) {
-        outputDirectory = state.outputDirectory
-        listenerPort    = state.listenerPort
-        fileExtension   = state.fileExtension
-        codeTemplate    = state.codeTemplate
+        outputDirectory    = state.outputDirectory
+        testCasesDirectory = state.testCasesDirectory.ifBlank { ".cptests" }
+        listenerPort       = state.listenerPort
+        fileExtension      = state.fileExtension
+        codeTemplate       = state.codeTemplate
     }
 
     // ── Companion ──────────────────────────────────────────────────────────

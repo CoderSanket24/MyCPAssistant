@@ -1,6 +1,7 @@
 package com.github.codersanket24.mycpassistant.actions
 
 import com.github.codersanket24.mycpassistant.toolWindow.CPTestToolWindowFactory
+import com.github.codersanket24.mycpassistant.toolWindow.CPTestToolWindowPanel
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -31,12 +32,11 @@ class RunCPTestsAction : AnAction() {
     }
 
     override fun update(e: AnActionEvent) {
+        val project    = e.project
         val sourceFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        val parent     = sourceFile?.parent
-        val hasTests   = e.project != null &&
+        val hasTests   = project != null &&
                 sourceFile != null &&
-                parent != null &&
-                parent.findChild("${sourceFile.nameWithoutExtension}_input1.txt") != null
+                CPTestToolWindowPanel.hasTestCases(project, sourceFile)
         e.presentation.isEnabledAndVisible = hasTests
     }
 

@@ -23,7 +23,8 @@ import java.time.LocalDate
  *  1. Sanitise the problem name → valid identifier.
  *  2. Resolve (and create) the output directory inside the project.
  *  3. Expand the user's code template with concrete values.
- *  4. Write the solution source file and numbered test-case files.
+ *  4. Write the solution source file into `outputDirectory` and test cases
+ *     into `testCasesDirectory` (.cptests/) so the code directory stays uncluttered.
  *  5. Open the solution file in the editor on the EDT.
  *  6. Show a success notification balloon.
  */
@@ -41,25 +42,30 @@ object ProblemFileGenerator {
             ?: return log.warn("Project base path is null; cannot generate files.")
 
         val outDir = File(projectDir, settings.outputDirectory)
+        val testDirName = settings.testCasesDirectory.ifBlank { ".cptests" }
+        val testDir = File(projectDir, testDirName)
 
         WriteCommandAction.runWriteCommandAction(project) {
             try {
-                // 1. Ensure output directory exists (VFS-aware)
+                // 1. Ensure solution output directory exists
                 val outVDir = VfsUtil.createDirectoryIfMissing(outDir.absolutePath)
                     ?: error("Could not create output directory: ${outDir.absolutePath}")
 
-                // 1b. Register the directory as a source root so IntelliJ compiles it.
+                // 1b. Register solution directory as source root so IntelliJ compiles it
                 ensureSourceRoot(project, outVDir)
+
+                // 1c. Ensure dedicated test cases directory exists (single folder for all problems)
+                val testVDir = VfsUtil.createDirectoryIfMissing(testDir.absolutePath) ?: outVDir
 
                 // 2. Write solution source file
                 val sourceContent = expandTemplate(settings.codeTemplate, safeName, problem)
                 val sourceFile    = writeFile(outVDir, "$safeName${settings.fileExtension}", sourceContent)
 
-                // 3. Write test-case files
+                // 3. Write test-case files into the dedicated test directory
                 problem.tests.forEachIndexed { idx, tc ->
                     val n = idx + 1
-                    writeFile(outVDir, "${safeName}_input$n.txt",  tc.input)
-                    writeFile(outVDir, "${safeName}_output$n.txt", tc.output)
+                    writeFile(testVDir, "${safeName}_input$n.txt",  tc.input)
+                    writeFile(testVDir, "${safeName}_output$n.txt", tc.output)
                 }
 
                 // 4. Open in editor + run config + populate CP Tests panel + notify (EDT)
@@ -75,7 +81,7 @@ object ProblemFileGenerator {
                     showNotification(
                         project,
                         "✅ Problem parsed: ${problem.name}",
-                        "Created $safeName${settings.fileExtension} with ${problem.tests.size} test case(s).",
+                        "Created $safeName${settings.fileExtension} with ${problem.tests.size} test case(s) in $testDirName/.",
                     )
                 }
             } catch (ex: Exception) {

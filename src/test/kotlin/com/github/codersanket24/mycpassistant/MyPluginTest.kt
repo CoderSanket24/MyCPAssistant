@@ -3,6 +3,7 @@ package com.github.codersanket24.mycpassistant
 import com.github.codersanket24.mycpassistant.generator.ProblemFileGenerator
 import com.github.codersanket24.mycpassistant.model.ProblemData
 import com.github.codersanket24.mycpassistant.runner.TestResult
+import com.github.codersanket24.mycpassistant.settings.AppSettingsState
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -61,5 +62,14 @@ class MyPluginTest {
         assertEquals(TestResult.Status.PASS, result.status)
         assertEquals("PASS", result.status.label)
         assertEquals(42L, result.timeMs)
+    }
+
+    @Test
+    fun testDefaultSettings() {
+        val state = AppSettingsState()
+        assertEquals("src", state.outputDirectory)
+        assertEquals(".cptests", state.testCasesDirectory)
+        assertEquals(27121, state.listenerPort)
+        assertEquals(".java", state.fileExtension)
     }
 }
