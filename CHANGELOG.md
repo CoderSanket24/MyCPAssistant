@@ -2,6 +2,8 @@
 
 # MyCPAssistant Changelog
 
+## [Unreleased]
+
 ## [1.0.0] - 2026-11-11
 ### Added
 - Initial public release of **MyCPAssistant** on JetBrains Marketplace.
