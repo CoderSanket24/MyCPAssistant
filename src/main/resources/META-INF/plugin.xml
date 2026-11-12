@@ -5,23 +5,22 @@
     <vendor url="https://github.com/CoderSanket24">codersanket24</vendor>
 
     <description><![CDATA[
-        <h2>⚡ MyCPAssistant &mdash; Competitive Programming Companion for IntelliJ IDEA</h2>
         <p>
-            <b>MyCPAssistant</b> is a powerful, modern, and lightweight competitive programming companion for IntelliJ IDEA.
+            MyCPAssistant is a powerful, modern, and lightweight competitive programming companion plugin for IntelliJ IDEA.
             It seamlessly integrates with the <b>Competitive Companion</b> browser extension to parse problems with a single click,
             generate solution files, and test your code in an interactive CPH/KHelper–style sidebar.
         </p>
 
-        <h3>✨ Key Features</h3>
+        <h3>Key Features</h3>
         <ul>
-            <li><b>⚡ One-Click Problem Parsing:</b> Receives problem statements, metadata, and test cases directly from Competitive Companion (Codeforces, AtCoder, LeetCode, CodeChef, CSES, HackerRank, and 60+ online judges).</li>
-            <li><b>🖥️ Interactive Test Runner (CPH Style):</b> Clean, right-sidebar tool window with auto-expanding test cards, per-test run buttons, wall-clock execution timing, and status badges (<code>PASS</code>, <code>FAIL</code>, <code>ERROR</code>, <code>TLE</code>).</li>
-            <li><b>🔄 Live Editor Compilation:</b> Runs tests directly from your active in-memory editor buffer &mdash; no need to spam <code>Ctrl+S</code> before running!</li>
-            <li><b>📂 Zero-Clutter Architecture:</b> Cleanly separates solution code in <code>src/</code> while isolating all sample input/output files in a dedicated <code>.cptests/</code> directory.</li>
-            <li><b>🔍 Auto-Sync Active Editor:</b> Automatically detects and loads the test cases for whatever problem file is currently active in the editor tab.</li>
-            <li><b>✏️ Custom Test Cases:</b> Easily add custom test cases with <b>+ Add Test Case</b> or edit existing inputs/outputs with automatic disk synchronization.</li>
-            <li><b>🛠️ Fully Customizable:</b> Configure custom solution templates (with variables like <code>${PROBLEM_NAME}</code>, <code>${DATE}</code>, <code>${URL}</code>, <code>${TIME_LIMIT}</code>), output directories, listener ports, and file extensions.</li>
-            <li><b>⌨️ Keyboard Shortcuts:</b>
+            <li><b>One-Click Problem Parsing:</b> Receives problem statements, metadata, and test cases directly from Competitive Companion (Codeforces, AtCoder, LeetCode, CodeChef, CSES, HackerRank, and 60+ online judges).</li>
+            <li><b>Interactive Test Runner (CPH Style):</b> Clean, right-sidebar tool window with auto-expanding test cards, per-test run buttons, wall-clock execution timing, and status badges (<code>PASS</code>, <code>FAIL</code>, <code>ERROR</code>, <code>TLE</code>).</li>
+            <li><b>Live Editor Compilation:</b> Runs tests directly from your active in-memory editor buffer &mdash; no need to spam <code>Ctrl+S</code> before running!</li>
+            <li><b>Zero-Clutter Architecture:</b> Cleanly separates solution code in <code>src/</code> while isolating all sample input/output files in a dedicated <code>.cptests/</code> directory.</li>
+            <li><b>Auto-Sync Active Editor:</b> Automatically detects and loads the test cases for whatever problem file is currently active in the editor tab.</li>
+            <li><b>Custom Test Cases:</b> Easily add custom test cases with <b>+ Add Test Case</b> or edit existing inputs/outputs with automatic disk synchronization.</li>
+            <li><b>Fully Customizable:</b> Configure custom solution templates (with variables like <code>${PROBLEM_NAME}</code>, <code>${DATE}</code>, <code>${URL}</code>, <code>${TIME_LIMIT}</code>), output directories, listener ports, and file extensions.</li>
+            <li><b>Keyboard Shortcuts:</b>
                 <ul>
                     <li><code>Ctrl+Shift+F10</code> &mdash; Run all test cases for current solution</li>
                     <li><code>Ctrl+Alt+N</code> &mdash; Manually create a new CP solution file</li>
@@ -29,7 +28,7 @@
             </li>
         </ul>
 
-        <h3>🚀 Quick Start</h3>
+        <h3>Quick Start</h3>
         <ol>
             <li>Install the <b>Competitive Companion</b> extension in your browser (Chrome / Firefox / Edge).</li>
             <li>Open your CP project in IntelliJ IDEA.</li>
