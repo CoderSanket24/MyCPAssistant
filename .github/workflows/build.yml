@@ -30,12 +30,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space
+      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
       - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          large-packages: false
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af || true
+          echo "=== Disk space after cleanup ==="
+          df -h
 
       # Check out the current repository
       - name: Fetch Sources
@@ -70,12 +76,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space
+      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
       - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          large-packages: false
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af || true
+          echo "=== Disk space after cleanup ==="
+          df -h
 
       # Check out the current repository
       - name: Fetch Sources
@@ -113,12 +125,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space
+      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
       - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          large-packages: false
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af || true
+          echo "=== Disk space after cleanup ==="
+          df -h
 
       # Check out the current repository
       - name: Fetch Sources
