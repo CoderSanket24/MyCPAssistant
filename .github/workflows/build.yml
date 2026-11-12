@@ -134,12 +134,10 @@ jobs:
       # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: true
 
       # Run Verify Plugin task and IntelliJ Plugin Verifier tool
       - name: Run Plugin Verification tasks
-        run: ./gradlew verifyPlugin
+        run: ./gradlew verifyPlugin --no-configuration-cache
 
       # Collect Plugin Verifier Result
       - name: Collect Plugin Verifier Result
