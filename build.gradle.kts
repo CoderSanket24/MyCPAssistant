@@ -18,3 +18,11 @@ dependencies {
         testFramework(TestFrameworkType.Platform)
     }
 }
+
+intellijPlatform {
+    pluginVerification {
+        ides {
+            current()
+        }
+    }
+}

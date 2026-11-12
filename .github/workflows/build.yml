@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
+      # Free GitHub Actions Environment Disk Space (~60 GB reclaimed)
       - name: Maximize Build Space
         run: |
           echo "=== Disk space before cleanup ==="
@@ -39,7 +39,14 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
-          sudo docker system prune -af || true
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /opt/hostedtoolcache
+          sudo mkdir -p /opt/hostedtoolcache
+          sudo chmod 777 /opt/hostedtoolcache
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile || true
           echo "=== Disk space after cleanup ==="
           df -h
 
@@ -76,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
+      # Free GitHub Actions Environment Disk Space (~60 GB reclaimed)
       - name: Maximize Build Space
         run: |
           echo "=== Disk space before cleanup ==="
@@ -85,7 +92,14 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
-          sudo docker system prune -af || true
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /opt/hostedtoolcache
+          sudo mkdir -p /opt/hostedtoolcache
+          sudo chmod 777 /opt/hostedtoolcache
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile || true
           echo "=== Disk space after cleanup ==="
           df -h
 
@@ -125,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      # Free GitHub Actions Environment Disk Space (~40 GB reclaimed)
+      # Free GitHub Actions Environment Disk Space (~60 GB reclaimed)
       - name: Maximize Build Space
         run: |
           echo "=== Disk space before cleanup ==="
@@ -134,7 +148,14 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
-          sudo docker system prune -af || true
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /opt/hostedtoolcache
+          sudo mkdir -p /opt/hostedtoolcache
+          sudo chmod 777 /opt/hostedtoolcache
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile || true
           echo "=== Disk space after cleanup ==="
           df -h
 
